@@ -3,7 +3,6 @@ package com.hamrah.liteplay
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Button
@@ -13,10 +12,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import java.io.IOException
 import android.util.Log
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 
 class MainActivity : ComponentActivity() {
 
-    private var mediaPlayer: MediaPlayer? = null
+    private lateinit var exoPlayer: ExoPlayer
     private lateinit var playPauseButton: Button
     private var isPlaying = false
     private val AUDIO_FILE_PATH = Environment.getExternalStorageDirectory().path + "/Music/TestFirstSong.mp3"
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        exoPlayer = ExoPlayer.Builder(this).build()
         setContentView(R.layout.activity_main)
 
         playPauseButton = findViewById(R.id.playPauseButton)
@@ -45,42 +47,34 @@ class MainActivity : ComponentActivity() {
         }
 
         playPauseButton.setOnClickListener {
-            mediaPlayer?.let {
                 if (isPlaying) {
-                    it.pause()
+                    exoPlayer.pause()
                     playPauseButton.text = "Play"
                     isPlaying = false
                 } else {
-                    it.start()
+                    exoPlayer.play()
                     playPauseButton.text = "Pause"
                     isPlaying = true
-                }
-            } ?: run {
-                Toast.makeText(this, "Media player not initialized", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     private fun initializeMediaPlayer() {
-        mediaPlayer = MediaPlayer().apply {
-            try {
-                setDataSource(AUDIO_FILE_PATH)
-                prepare()
-                setOnCompletionListener {
-                    this@MainActivity.isPlaying = false
-                    playPauseButton.text = "Play"
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Toast.makeText(this@MainActivity, "Error loading audio file", Toast.LENGTH_SHORT).show()
-                playPauseButton.isEnabled = false
-            }
+        try{
+            val mediaItem = MediaItem.fromUri(AUDIO_FILE_PATH)
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+        }
+        catch (e: IOException) {
+            e.printStackTrace()
+            Toast.makeText(this@MainActivity, "Error loading audio file", Toast.LENGTH_SHORT).show()
+            playPauseButton.isEnabled = false
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        mediaPlayer?.release()
-        mediaPlayer = null
+        exoPlayer.release()
+
     }
 }
