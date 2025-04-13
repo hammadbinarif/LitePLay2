@@ -2,12 +2,13 @@ package com.hamrah.liteplay.utils
 
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import com.hamrah.liteplay.AudioFile
 import java.io.File
 
 
 fun loadLocalMusicFiles(context: Context): List<AudioFile> {
-    val musicDir = File("/storage/emulated/0/Music")
+    val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
     val audioList = mutableListOf<AudioFile>()
 
     if (musicDir.exists() && musicDir.isDirectory) {

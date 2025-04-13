@@ -3,6 +3,7 @@ package com.hamrah.liteplay
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Button
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestAudioPermission()
         exoPlayer = ExoPlayer.Builder(this).build()
         val audioList = loadLocalMusicFiles(this)
         val currentAudio = mutableStateOf<AudioFile?>(null)
@@ -111,5 +113,17 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         exoPlayer.release()
 
+    }
+
+    private fun requestAudioPermission() {
+        // Android 13+ (API 33+)
+        if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.READ_MEDIA_AUDIO),
+                123 // requestCode
+            )
+        }
+        // TODO: Add code to hand android version
     }
 }
