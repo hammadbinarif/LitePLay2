@@ -1,4 +1,6 @@
 package com.hamrah.liteplay.ui
+import PlaybackSlider
+import androidx.compose.runtime.State
 
 import android.content.Context
 import androidx.compose.foundation.background
@@ -20,8 +22,11 @@ fun AudioListScreen(
     onAudioSelected: (AudioFile, Int) -> Unit,
     onNext: () -> Unit,
     onToggleShuffle: () -> Unit,
-    isShuffleEnabled: Boolean
-) {
+    isShuffleEnabled: Boolean,
+    playbackPosition: State<Long>,
+    duration: State<Long>,
+    onSeek: (Long) -> Unit)
+ {
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn {
             itemsIndexed(audioFiles) { index, audio ->
@@ -34,7 +39,11 @@ fun AudioListScreen(
                 )
             }
         }
-
+        PlaybackSlider(
+            playbackPosition = playbackPosition,
+            duration = duration,
+            onSeek = onSeek
+        )
         Row(
             horizontalArrangement = Arrangement.SpaceEvenly,
             modifier = Modifier
@@ -51,3 +60,4 @@ fun AudioListScreen(
         }
     }
 }
+

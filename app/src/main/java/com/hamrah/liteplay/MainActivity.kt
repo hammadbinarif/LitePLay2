@@ -29,9 +29,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var exoPlayer: ExoPlayer
@@ -43,7 +46,10 @@ class MainActivity : ComponentActivity() {
     private var audioByFolder = mapOf<String, List<AudioFile>>()
     private var selectedFolder = mutableStateOf<String?>(null)
     private var isPlaying = false
-    val visibleAudioList = mutableStateListOf<AudioFile>()
+    private val visibleAudioList = mutableStateListOf<AudioFile>()
+    val playbackPosition = mutableStateOf(0L)     // current position in ms
+    val duration = mutableStateOf(0L)             // total duration in ms
+
     //private val AUDIO_FILE_PATH = Environment.getExternalStorageDirectory().path + "/Music/TestFirstSong.mp3"
 //    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
 //        if (isGranted) {
@@ -64,10 +70,11 @@ class MainActivity : ComponentActivity() {
         audioByFolder = groupAudioByFolder(audioFiles)
         shuffledList = audioFiles // initialize to original
 
+
 // Optional: auto-play first
-        if (audioFiles.isNotEmpty()) {
-            playAudio(0)
-        }
+//        if (audioFiles.isNotEmpty()) {
+//            playAudio(0)
+//        }
 
         //val currentAudio = mutableStateOf<AudioFile?>(null)
 
@@ -80,7 +87,12 @@ class MainActivity : ComponentActivity() {
                             selectedFolder.value = folder
                             visibleAudioList.clear()
                             visibleAudioList.addAll(audioByFolder[selectedFolder.value] ?: emptyList())
-                        }
+
+                        },
+                        playbackPosition = playbackPosition,
+                        duration = duration,
+                        onSeek = { pos -> exoPlayer.seekTo(pos)}
+
                     )
                 } else {
                     Column {
@@ -96,8 +108,21 @@ class MainActivity : ComponentActivity() {
                             onAudioSelected = { audio, index -> playAudio(index) },
                             onNext = { playNextAudio() },
                             onToggleShuffle = { toggleShuffle() },
-                            isShuffleEnabled = isShuffleEnabled.value
+                            isShuffleEnabled = isShuffleEnabled.value,
+                            playbackPosition = playbackPosition,
+                            duration = duration,
+                            onSeek = { pos -> exoPlayer.seekTo(pos) }
+
                         )
+                    }
+                }
+                LaunchedEffect(exoPlayer) {
+                    while (true) {
+                        if (exoPlayer.isPlaying) {
+                            playbackPosition.value = exoPlayer.currentPosition
+                            duration.value = exoPlayer.duration
+                        }
+                        delay(500)
                     }
                 }
             }
@@ -171,7 +196,7 @@ class MainActivity : ComponentActivity() {
                 123 // requestCode
             )
         }
-        // TODO: Add code to hand android version
+        // TODO: Add code to handle android version
     }
 
     fun playAudio(index: Int) {
