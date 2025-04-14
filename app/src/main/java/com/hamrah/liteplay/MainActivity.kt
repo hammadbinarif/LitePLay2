@@ -24,6 +24,11 @@ import com.hamrah.liteplay.utils.loadLocalMusicFiles
 class MainActivity : ComponentActivity() {
 
     private lateinit var exoPlayer: ExoPlayer
+    private var audioFiles = listOf<AudioFile>()
+    private var currentIndex = mutableStateOf(0)
+    private var isShuffleEnabled = mutableStateOf(false)
+    private var shuffledList = listOf<AudioFile>()
+    private val currentAudio = mutableStateOf<AudioFile?>(null)
     private var isPlaying = false
     //private val AUDIO_FILE_PATH = Environment.getExternalStorageDirectory().path + "/Music/TestFirstSong.mp3"
 //    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -40,18 +45,25 @@ class MainActivity : ComponentActivity() {
         requestAudioPermission()
         exoPlayer = ExoPlayer.Builder(this).build()
         val audioList = loadLocalMusicFiles(this)
-        val currentAudio = mutableStateOf<AudioFile?>(null)
+
+        audioFiles = loadLocalMusicFiles(this)
+        shuffledList = audioFiles // initialize to original
+
+// Optional: auto-play first
+        if (audioFiles.isNotEmpty()) {
+            playAudio(0)
+        }
+
+        //val currentAudio = mutableStateOf<AudioFile?>(null)
 
         setContent {
             MaterialTheme {
                 AudioListScreen(
-                    context = this,
-                    audioList = audioList,
-                    currentlyPlaying = currentAudio.value,
-                    onSongSelected = { audio ->
-                        currentAudio.value = audio
-                        playAudio(audio)
-                    }
+                    audioFiles = audioFiles,
+                    onAudioSelected = { audio, index -> playAudio(index) },
+                    onNext = { playNextAudio() },
+                    onToggleShuffle = { toggleShuffle() },
+                    isShuffleEnabled = isShuffleEnabled.value
                 )
             }
         }
@@ -126,4 +138,34 @@ class MainActivity : ComponentActivity() {
         }
         // TODO: Add code to hand android version
     }
+
+    private fun playAudio(index: Int) {
+        val listToUse = if (isShuffleEnabled.value) shuffledList else audioFiles
+        val audio = listToUse[index]
+
+        currentAudio.value = audio
+        currentIndex.value = index
+
+        val mediaItem = MediaItem.fromUri(audio.uri)
+        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.prepare()
+        exoPlayer.play()
+    }
+
+    private fun playNextAudio() {
+        val list = if (isShuffleEnabled.value) shuffledList else audioFiles
+        val nextIndex = (currentIndex.value + 1) % list.size
+        playAudio(nextIndex)
+    }
+
+    private fun toggleShuffle() {
+        isShuffleEnabled.value = !isShuffleEnabled.value
+        shuffledList = if (isShuffleEnabled.value) audioFiles.shuffled() else audioFiles
+        // Start from current song in shuffled list if shuffle is enabled
+        if (isShuffleEnabled.value) {
+            val current = currentAudio.value
+            currentIndex.value = shuffledList.indexOfFirst { it.uri == current?.uri }
+        }
+    }
+
 }
