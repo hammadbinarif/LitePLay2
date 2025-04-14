@@ -3,11 +3,16 @@ package com.hamrah.liteplay
 
 import FolderBrowserScreen
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -33,6 +38,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -49,6 +58,7 @@ class MainActivity : ComponentActivity() {
     private val visibleAudioList = mutableStateListOf<AudioFile>()
     val playbackPosition = mutableStateOf(0L)     // current position in ms
     val duration = mutableStateOf(0L)             // total duration in ms
+    private lateinit var mediaSession: MediaSessionCompat
 
     //private val AUDIO_FILE_PATH = Environment.getExternalStorageDirectory().path + "/Music/TestFirstSong.mp3"
 //    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -63,7 +73,34 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestAudioPermission()
+        mediaSession = MediaSessionCompat(this, "LitePlaySession").apply {
+            isActive = true
+        }
+
+        // Pass this session to your player notification later
+
+
         exoPlayer = ExoPlayer.Builder(this).build()
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updatePlaybackState(isPlaying)
+                showMediaNotification(isPlaying)
+            }
+        })
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "media_playback_channel",
+                "Media Playback",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Media playback controls"
+            }
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+
         //val audioList = loadLocalMusicFiles(this)
 
         audioFiles = loadAudioFiles()
@@ -229,6 +266,72 @@ class MainActivity : ComponentActivity() {
 
     fun groupAudioByFolder(audioList: List<AudioFile>): Map<String, List<AudioFile>> {
         return audioList.groupBy { it.parentFolder }
+    }
+
+    private fun updatePlaybackState(isPlaying: Boolean) {
+        val state = PlaybackStateCompat.Builder()
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+            )
+            .setState(
+                if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
+                exoPlayer.currentPosition,
+                1f
+            )
+            .build()
+        mediaSession.setPlaybackState(state)
+    }
+
+    private fun showMediaNotification(isPlaying: Boolean) {
+        val controller = mediaSession.controller
+        val mediaMetadata = controller.metadata
+        val description = mediaMetadata?.description
+
+        val builder = NotificationCompat.Builder(this, "media_playback_channel")
+            .setContentTitle(description?.title ?: "Playing audio")
+            .setContentText(description?.subtitle ?: "")
+            .setSmallIcon(R.drawable.ic_music_note) // Replace with your own icon
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession.sessionToken)
+                    .setShowActionsInCompactView(0, 1)
+            )
+            .addAction(
+                NotificationCompat.Action(
+                    R.drawable.ic_prev, "Prev", null // Add real intent if needed
+                )
+            )
+            .addAction(
+                NotificationCompat.Action(
+                    if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+                    if (isPlaying) "Pause" else "Play",
+                    null // Add real intent if needed
+                )
+            )
+            .addAction(
+                NotificationCompat.Action(
+                    R.drawable.ic_next, "Next", null // Add real intent if needed
+                )
+            )
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                1001
+            )
+            return  // Don't try to show notification without permission
+        }
+
+        with(NotificationManagerCompat.from(this)) {
+            notify(1, builder.build())
+        }
     }
 
 }
