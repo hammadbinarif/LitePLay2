@@ -9,27 +9,45 @@ import androidx.compose.ui.unit.dp
 fun PlaybackSlider(
     playbackPosition: State<Long>,
     duration: State<Long>,
-    onSeek: (Long) -> Unit
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    if (duration.value > 0L) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            Slider(
-                value = playbackPosition.value.toFloat(),
-                onValueChange = { onSeek(it.toLong()) },
-                valueRange = 0f..duration.value.toFloat(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                text = "${formatTime(playbackPosition.value)} / ${formatTime(duration.value)}",
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-        }
+    val sliderPosition = remember(playbackPosition.value) {
+        if (duration.value > 0L) {
+            playbackPosition.value.toFloat() / duration.value.toFloat()
+        } else 0f
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = formatTime(playbackPosition.value),
+            modifier = Modifier.padding(end = 8.dp),
+            style = MaterialTheme.typography.labelSmall
+        )
+        Slider(
+            value = sliderPosition,
+            onValueChange = { newValue ->
+                val newPosition = (newValue * duration.value).toLong()
+                onSeek(newPosition)
+            },
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = formatTime(duration.value),
+            modifier = Modifier.padding(start = 8.dp),
+            style = MaterialTheme.typography.labelSmall
+        )
     }
 }
 
 fun formatTime(ms: Long): String {
-    val totalSec = ms / 1000
-    val minutes = totalSec / 60
-    val seconds = totalSec % 60
-    return String.format("%02d:%02d", minutes, seconds)
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%d:%02d", minutes, seconds)
 }

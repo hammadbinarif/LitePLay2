@@ -6,42 +6,36 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.widget.Button
-import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import java.io.IOException
-import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.mutableStateOf
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import com.hamrah.liteplay.ui.AudioListScreen
-import com.hamrah.liteplay.utils.loadAudioFiles
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.currentCompositionErrors
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.hamrah.liteplay.player.MusicService
+import com.hamrah.liteplay.ui.AudioListScreen
+import com.hamrah.liteplay.utils.loadAudioFiles
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -54,31 +48,26 @@ class MainActivity : ComponentActivity() {
     private val currentAudio = mutableStateOf<AudioFile?>(null)
     private var audioByFolder = mapOf<String, List<AudioFile>>()
     private var selectedFolder = mutableStateOf<String?>(null)
-    private var isPlaying = false
+    private var isPlaying = mutableStateOf(false)
     private val visibleAudioList = mutableStateListOf<AudioFile>()
     val playbackPosition = mutableStateOf(0L)     // current position in ms
     val duration = mutableStateOf(0L)             // total duration in ms
     private lateinit var mediaSession: MediaSessionCompat
+    private var isRepeatEnabled = mutableStateOf(false)
 
-    //private val AUDIO_FILE_PATH = Environment.getExternalStorageDirectory().path + "/Music/TestFirstSong.mp3"
-//    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-//        if (isGranted) {
-//            initializeMediaPlayer()
-//        } else {
-//            Toast.makeText(this, "Permission to access storage denied", Toast.LENGTH_SHORT).show()
-//            playPauseButton.isEnabled = false
-//        }
-//    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestAudioPermission()
+        requestForgroundServicePermission()
         mediaSession = MediaSessionCompat(this, "LitePlaySession").apply {
             isActive = true
         }
 
         // Pass this session to your player notification later
 
+        val serviceIntent = Intent(this, MusicService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
 
         exoPlayer = ExoPlayer.Builder(this).build()
         exoPlayer.addListener(object : Player.Listener {
@@ -90,30 +79,19 @@ class MainActivity : ComponentActivity() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                "media_playback_channel",
-                "Media Playback",
+                "music_channel",
+                "Music Playback",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Media playback controls"
-            }
-
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
         }
 
-        //val audioList = loadLocalMusicFiles(this)
 
         audioFiles = loadAudioFiles()
         audioByFolder = groupAudioByFolder(audioFiles)
         shuffledList = audioFiles // initialize to original
 
-
-// Optional: auto-play first
-//        if (audioFiles.isNotEmpty()) {
-//            playAudio(0)
-//        }
-
-        //val currentAudio = mutableStateOf<AudioFile?>(null)
 
         setContent {
             MaterialTheme {
@@ -123,14 +101,26 @@ class MainActivity : ComponentActivity() {
                         onFolderSelected = { folder ->
                             selectedFolder.value = folder
                             visibleAudioList.clear()
-                            visibleAudioList.addAll(audioByFolder[selectedFolder.value] ?: emptyList())
+                            visibleAudioList.addAll(
+                                audioByFolder[selectedFolder.value] ?: emptyList()
+                            )
 
                         },
                         playbackPosition = playbackPosition,
                         duration = duration,
-                        onSeek = { pos -> exoPlayer.seekTo(pos)}
+                        onSeek = { pos -> exoPlayer.seekTo(pos) },
+                        onForward = { exoPlayer.seekTo(playbackPosition.value + 10000) },
+                        onPrevious = { playPreviousAudio() },
+                        onRepeat = { toggleRepeat() },
+                        onRewind = { exoPlayer.seekTo(playbackPosition.value - 10000) },
+                        isRepeatEnabled = isRepeatEnabled.value,
+                        onToggleShuffle = { toggleShuffle() },
+                        onNext = { playNextAudio() },
+                        onTogglePlayPause = {togglePlayPause()},
+                        isPlaying = isPlaying.value
 
-                    )
+
+                        )
                 } else {
                     Column {
                         Button(
@@ -143,12 +133,20 @@ class MainActivity : ComponentActivity() {
                         AudioListScreen(
                             audioFiles = audioByFolder[selectedFolder.value] ?: emptyList(),
                             onAudioSelected = { audio, index -> playAudio(index) },
+                            currentAudio = currentAudio.value,
                             onNext = { playNextAudio() },
                             onToggleShuffle = { toggleShuffle() },
                             isShuffleEnabled = isShuffleEnabled.value,
                             playbackPosition = playbackPosition,
                             duration = duration,
-                            onSeek = { pos -> exoPlayer.seekTo(pos) }
+                            onSeek = { pos -> exoPlayer.seekTo(pos) },
+                            onForward = { exoPlayer.seekTo(playbackPosition.value + 10000) },
+                            onPrevious = { playPreviousAudio() },
+                            onRepeat = { toggleRepeat() },
+                            onRewind = { exoPlayer.seekTo(playbackPosition.value - 10000) },
+                            isRepeatEnabled = isRepeatEnabled.value,
+                            onTogglePlayPause = {togglePlayPause()},
+                            isPlaying = isPlaying.value
 
                         )
                     }
@@ -164,60 +162,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
-
-
-//        setContentView(R.layout.activity_main)
-
-//        playPauseButton = findViewById(R.id.playPauseButton)
-
-        // Check and request permission
-//        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO)
-//            == PackageManager.PERMISSION_GRANTED
-//        ) {
-//            initializeMediaPlayer()
-//        } else {
-//            requestPermissionLauncher.launch(Manifest.permission.READ_MEDIA_AUDIO)
-//        }
-//
-//        playPauseButton.setOnClickListener {
-//                if (isPlaying) {
-//                    exoPlayer.pause()
-//                    playPauseButton.text = "Play"
-//                    isPlaying = false
-//                } else {
-//                    exoPlayer.play()
-//                    playPauseButton.text = "Pause"
-//                    isPlaying = true
-//            }
-//        }
     }
 
-//    private fun initializeMediaPlayer() {
-//        try{
-//            val mediaItem = MediaItem.fromUri(AUDIO_FILE_PATH)
-//            exoPlayer.setMediaItem(mediaItem)
-//            exoPlayer.prepare()
-//        }
-//        catch (e: IOException) {
-//            e.printStackTrace()
-//            Toast.makeText(this@MainActivity, "Error loading audio file", Toast.LENGTH_SHORT).show()
-//            playPauseButton.isEnabled = false
-//        }
-//    }
 
-//    private fun playAudio(audio: AudioFile) {
-//        try {
-//            val mediaItem = MediaItem.fromUri(Uri.parse(audio.path))
-//            exoPlayer.setMediaItem(mediaItem)
-//            exoPlayer.prepare()
-//            exoPlayer.play()
-//        }
-//        catch (e: IOException) {
-//            e.printStackTrace()
-//            Toast.makeText(this@MainActivity, "Error loading audio file", Toast.LENGTH_SHORT).show()
-//        }
-//    }
+
     override fun onDestroy() {
         super.onDestroy()
         exoPlayer.release()
@@ -236,9 +184,22 @@ class MainActivity : ComponentActivity() {
         // TODO: Add code to handle android version
     }
 
+    private fun requestForgroundServicePermission() {
+        // Android 13+ (API 33+)
+        if (checkSelfPermission(Manifest.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK)
+            != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                arrayOf(Manifest.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK),
+                123 // requestCode
+            )
+        }
+        // TODO: Add code to handle android version
+    }
+
     fun playAudio(index: Int) {
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+        isPlaying.value=false
 
         val selectedList = if (isShuffleEnabled.value) shuffledList else visibleAudioList
 
@@ -249,6 +210,7 @@ class MainActivity : ComponentActivity() {
             exoPlayer.play()
             currentAudioIndex.value = index
             currentAudio.value = audio
+            isPlaying.value=true
         }
     }
 
@@ -257,6 +219,13 @@ class MainActivity : ComponentActivity() {
         val nextIndex = (currentAudioIndex.value + 1) % list.size
         playAudio(nextIndex)
     }
+
+    fun playPreviousAudio() {
+        val list = if (isShuffleEnabled.value) shuffledList else visibleAudioList
+        val previousIndex = if (currentAudioIndex.value ==0) list.size-1 else currentAudioIndex.value-1
+        playAudio(previousIndex)
+    }
+
     fun toggleShuffle() {
         isShuffleEnabled.value = !isShuffleEnabled.value
         if (isShuffleEnabled.value) {
@@ -332,6 +301,24 @@ class MainActivity : ComponentActivity() {
         with(NotificationManagerCompat.from(this)) {
             notify(1, builder.build())
         }
+    }
+
+    private fun toggleRepeat() {
+        isRepeatEnabled.value = !isRepeatEnabled.value
+        exoPlayer.repeatMode = if (isRepeatEnabled.value) {
+            Player.REPEAT_MODE_ONE // Repeats current song
+        } else {
+            Player.REPEAT_MODE_OFF
+        }
+    }
+
+    fun togglePlayPause() {
+        if (exoPlayer.isPlaying) {
+            exoPlayer.pause()
+        } else {
+            exoPlayer.play()
+        }
+        isPlaying.value = exoPlayer.isPlaying
     }
 
 }
