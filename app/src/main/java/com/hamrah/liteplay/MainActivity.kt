@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,9 @@ import com.hamrah.liteplay.ui.AudioListScreen
 import com.hamrah.liteplay.utils.loadAudioFiles
 import kotlinx.coroutines.delay
 
+private const val CHANNEL_ID = "LitePlay"
+private val MEDIA_SESSION_TAG = "com.hamrah.liteplay.MEDIA_SESSION"
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var exoPlayer: ExoPlayer
@@ -55,37 +59,49 @@ class MainActivity : ComponentActivity() {
     private lateinit var mediaSession: MediaSessionCompat
     private var isRepeatEnabled = mutableStateOf(false)
 
-
+    private fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "LitePlay" // User-visible name of the channel
+            val descriptionText = "Notifications for music playback controls" // User-visible description
+            val importance = NotificationManager.IMPORTANCE_DEFAULT // or IMPORTANCE_LOW, IMPORTANCE_HIGH, etc.
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            // Register the channel with the system
+            val notificationManager: NotificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestAudioPermission()
         requestForgroundServicePermission()
-        mediaSession = MediaSessionCompat(this, "LitePlaySession").apply {
+        mediaSession = MediaSessionCompat(this, MEDIA_SESSION_TAG).apply {
             isActive = true
         }
 
         // Pass this session to your player notification later
 
-        val serviceIntent = Intent(this, MusicService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
-
         exoPlayer = ExoPlayer.Builder(this).build()
         exoPlayer.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                updatePlaybackState(isPlaying)
-                showMediaNotification(isPlaying)
+                Log.d("LitePlay","IsPlayingChanged with new value = $isPlaying");
+                //updatePlaybackState(isPlaying)
+                //showMediaNotification(isPlaying)
             }
         })
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "music_channel",
-                "Music Playback",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
+        createNotificationChannel(this)
+
+        val serviceIntent = Intent(this, MusicService::class.java)
+
+            //.apply {
+            //putParcelableArrayListExtra("AUDIO_LIST", ArrayList(audioFiles)) // Make AudioFile Parcelable
+        //}
+        startForegroundService(serviceIntent)
+        //startService(serviceIntent)
+
 
 
         audioFiles = loadAudioFiles()
@@ -258,7 +274,7 @@ class MainActivity : ComponentActivity() {
         val mediaMetadata = controller.metadata
         val description = mediaMetadata?.description
 
-        val builder = NotificationCompat.Builder(this, "media_playback_channel")
+        val builder = NotificationCompat.Builder(this, "LitePlay")
             .setContentTitle(description?.title ?: "Playing audio")
             .setContentText(description?.subtitle ?: "")
             .setSmallIcon(R.drawable.ic_music_note) // Replace with your own icon
@@ -271,7 +287,7 @@ class MainActivity : ComponentActivity() {
             )
             .addAction(
                 NotificationCompat.Action(
-                    R.drawable.ic_prev, "Prev", null // Add real intent if needed
+                    R.drawable.ic_prev, "Prev", null // Add real intent i   f needed
                 )
             )
             .addAction(
