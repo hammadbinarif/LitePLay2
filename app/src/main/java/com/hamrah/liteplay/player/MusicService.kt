@@ -1,21 +1,20 @@
 package com.hamrah.liteplay.player
 
-import androidx.media3.session.MediaSession
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSessionService
-import android.content.Intent
 import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
+// import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.hamrah.liteplay.AudioFile
 
-private val MEDIA_SESSION_TAG = "com.hamrah.liteplay.MEDIA_SESSION"
+private const val MEDIA_SESSION_TAG = "com.hamrah.liteplay.MEDIA_SESSION"
 
 class MusicService : MediaSessionService() {
 
@@ -43,16 +42,18 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        mediaSession.release()
-        player.release()
+        mediaSession.run {
+            player.release()
+            release()
+        }
         super.onDestroy()
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        player.release()
-        mediaSession.release()
-        stopSelf()
-    }
+//    override fun onTaskRemoved(rootIntent: Intent?) {
+//        player.release()
+//        mediaSession.release()
+//        stopSelf()
+//    }
 
     fun setAudioList(list: List<AudioFile>) {
         audioFiles = list
@@ -99,7 +100,22 @@ class MusicService : MediaSessionService() {
 
     inner class MediaSessionCallback : MediaSession.Callback {
 
+//         @OptIn(UnstableApi::class)
+//        override fun onConnect(
+//            session: MediaSession,
+//            controller: MediaSession.ControllerInfo,
+//        ): MediaSession.ConnectionResult {
+//            // You can limit features here if you want (e.g., deny connection or restrict commands)
+//            return MediaSession.ConnectionResult.accept(
+//                MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS,
+//                MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+//            )
+//        }
 
+        override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            // Optional: perform actions once the controller has connected
+            println("Controller connected: ${controller.packageName}")
+        }
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -114,3 +130,4 @@ class MusicService : MediaSessionService() {
         }
     }
 }
+

@@ -1,18 +1,13 @@
-// MainActivity.kt
+    // MainActivity.kt
 package com.hamrah.liteplay
 
 import FolderBrowserScreen
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,29 +17,28 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.currentCompositionErrors
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.FutureCallback
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.MoreExecutors
 import com.hamrah.liteplay.player.MusicService
 import com.hamrah.liteplay.ui.AudioListScreen
 import com.hamrah.liteplay.utils.loadAudioFiles
 import kotlinx.coroutines.delay
 
-private const val CHANNEL_ID = "LitePlay"
+
+    private const val CHANNEL_ID = "LitePlay"
 private val MEDIA_SESSION_TAG = "com.hamrah.liteplay.MEDIA_SESSION"
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var exoPlayer: ExoPlayer
     private var audioFiles = listOf<AudioFile>()
     private var currentAudioIndex = mutableStateOf(0)
     private var isShuffleEnabled = mutableStateOf(false)
@@ -56,51 +50,35 @@ class MainActivity : ComponentActivity() {
     private val visibleAudioList = mutableStateListOf<AudioFile>()
     val playbackPosition = mutableStateOf(0L)     // current position in ms
     val duration = mutableStateOf(0L)             // total duration in ms
-    private lateinit var mediaSession: MediaSessionCompat
     private var isRepeatEnabled = mutableStateOf(false)
+    private var mediaController: MediaController? = null
 
-    private fun createNotificationChannel(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "LitePlay" // User-visible name of the channel
-            val descriptionText = "Notifications for music playback controls" // User-visible description
-            val importance = NotificationManager.IMPORTANCE_DEFAULT // or IMPORTANCE_LOW, IMPORTANCE_HIGH, etc.
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            // Register the channel with the system
-            val notificationManager: NotificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
-    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         requestAudioPermission()
+
         requestForgroundServicePermission()
-        mediaSession = MediaSessionCompat(this, MEDIA_SESSION_TAG).apply {
-            isActive = true
+
+        val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
+
+    val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+
+    Futures.addCallback(controllerFuture, object : FutureCallback<MediaController> {
+        override fun onSuccess(controller: MediaController?) {
+            controller?.let {
+                mediaController = it
+            }
         }
 
-        // Pass this session to your player notification later
-
-        exoPlayer = ExoPlayer.Builder(this).build()
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                Log.d("LitePlay","IsPlayingChanged with new value = $isPlaying");
-                //updatePlaybackState(isPlaying)
-                //showMediaNotification(isPlaying)
-            }
-        })
-
-        createNotificationChannel(this)
+        override fun onFailure(t: Throwable) {
+            Log.e("MainActivity", "MediaController connection failed", t)
+        }
+    }, MoreExecutors.directExecutor())
 
         val serviceIntent = Intent(this, MusicService::class.java)
 
-            //.apply {
-            //putParcelableArrayListExtra("AUDIO_LIST", ArrayList(audioFiles)) // Make AudioFile Parcelable
-        //}
         startForegroundService(serviceIntent)
-        //startService(serviceIntent)
 
 
 
@@ -124,11 +102,11 @@ class MainActivity : ComponentActivity() {
                         },
                         playbackPosition = playbackPosition,
                         duration = duration,
-                        onSeek = { pos -> exoPlayer.seekTo(pos) },
-                        onForward = { exoPlayer.seekTo(playbackPosition.value + 10000) },
+                        onSeek = { pos -> mediaController?.seekTo(pos) },
+                        onForward = { mediaController?.seekTo(playbackPosition.value + 10000) },
                         onPrevious = { playPreviousAudio() },
                         onRepeat = { toggleRepeat() },
-                        onRewind = { exoPlayer.seekTo(playbackPosition.value - 10000) },
+                        onRewind = { mediaController?.seekTo(playbackPosition.value - 10000) },
                         isRepeatEnabled = isRepeatEnabled.value,
                         onToggleShuffle = { toggleShuffle() },
                         onNext = { playNextAudio() },
@@ -155,11 +133,11 @@ class MainActivity : ComponentActivity() {
                             isShuffleEnabled = isShuffleEnabled.value,
                             playbackPosition = playbackPosition,
                             duration = duration,
-                            onSeek = { pos -> exoPlayer.seekTo(pos) },
-                            onForward = { exoPlayer.seekTo(playbackPosition.value + 10000) },
+                            onSeek = { pos -> mediaController?.seekTo(pos) },
+                            onForward = { mediaController?.seekTo(playbackPosition.value + 10000) },
                             onPrevious = { playPreviousAudio() },
                             onRepeat = { toggleRepeat() },
-                            onRewind = { exoPlayer.seekTo(playbackPosition.value - 10000) },
+                            onRewind = { mediaController?.seekTo(playbackPosition.value - 10000) },
                             isRepeatEnabled = isRepeatEnabled.value,
                             onTogglePlayPause = {togglePlayPause()},
                             isPlaying = isPlaying.value
@@ -167,11 +145,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-                LaunchedEffect(exoPlayer) {
+                LaunchedEffect(mediaController) {
                     while (true) {
-                        if (exoPlayer.isPlaying) {
-                            playbackPosition.value = exoPlayer.currentPosition
-                            duration.value = exoPlayer.duration
+                        if (mediaController?.isPlaying==true) {
+                            playbackPosition.value = mediaController!!.currentPosition
+                            duration.value = mediaController!!.duration
                         }
                         delay(500)
                     }
@@ -184,7 +162,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        exoPlayer.release()
+        //exoPlayer.release()
 
     }
 
@@ -213,17 +191,17 @@ class MainActivity : ComponentActivity() {
     }
 
     fun playAudio(index: Int) {
-        exoPlayer.stop()
-        exoPlayer.clearMediaItems()
+        mediaController?.stop()
+        mediaController?.clearMediaItems()
         isPlaying.value=false
 
         val selectedList = if (isShuffleEnabled.value) shuffledList else visibleAudioList
 
         if (index < selectedList.size) {
             val audio = selectedList[index]
-            exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse(audio.path)))
-            exoPlayer.prepare()
-            exoPlayer.play()
+            mediaController?.setMediaItem(MediaItem.fromUri(Uri.parse(audio.path)))
+            mediaController?.prepare()
+            mediaController?.play()
             currentAudioIndex.value = index
             currentAudio.value = audio
             isPlaying.value=true
@@ -253,75 +231,10 @@ class MainActivity : ComponentActivity() {
         return audioList.groupBy { it.parentFolder }
     }
 
-    private fun updatePlaybackState(isPlaying: Boolean) {
-        val state = PlaybackStateCompat.Builder()
-            .setActions(
-                PlaybackStateCompat.ACTION_PLAY or
-                        PlaybackStateCompat.ACTION_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-            )
-            .setState(
-                if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
-                exoPlayer.currentPosition,
-                1f
-            )
-            .build()
-        mediaSession.setPlaybackState(state)
-    }
-
-    private fun showMediaNotification(isPlaying: Boolean) {
-        val controller = mediaSession.controller
-        val mediaMetadata = controller.metadata
-        val description = mediaMetadata?.description
-
-        val builder = NotificationCompat.Builder(this, "LitePlay")
-            .setContentTitle(description?.title ?: "Playing audio")
-            .setContentText(description?.subtitle ?: "")
-            .setSmallIcon(R.drawable.ic_music_note) // Replace with your own icon
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOnlyAlertOnce(true)
-            .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
-                    .setMediaSession(mediaSession.sessionToken)
-                    .setShowActionsInCompactView(0, 1)
-            )
-            .addAction(
-                NotificationCompat.Action(
-                    R.drawable.ic_prev, "Prev", null // Add real intent i   f needed
-                )
-            )
-            .addAction(
-                NotificationCompat.Action(
-                    if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
-                    if (isPlaying) "Pause" else "Play",
-                    null // Add real intent if needed
-                )
-            )
-            .addAction(
-                NotificationCompat.Action(
-                    R.drawable.ic_next, "Next", null // Add real intent if needed
-                )
-            )
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                1001
-            )
-            return  // Don't try to show notification without permission
-        }
-
-        with(NotificationManagerCompat.from(this)) {
-            notify(1, builder.build())
-        }
-    }
 
     private fun toggleRepeat() {
         isRepeatEnabled.value = !isRepeatEnabled.value
-        exoPlayer.repeatMode = if (isRepeatEnabled.value) {
+        mediaController?.repeatMode = if (isRepeatEnabled.value) {
             Player.REPEAT_MODE_ONE // Repeats current song
         } else {
             Player.REPEAT_MODE_OFF
@@ -329,12 +242,12 @@ class MainActivity : ComponentActivity() {
     }
 
     fun togglePlayPause() {
-        if (exoPlayer.isPlaying) {
-            exoPlayer.pause()
+        if (mediaController?.isPlaying==true) {
+            mediaController!!.pause()
         } else {
-            exoPlayer.play()
+            mediaController!!.play()
         }
-        isPlaying.value = exoPlayer.isPlaying
+        isPlaying.value = mediaController?.isPlaying ==true
     }
 
 }
