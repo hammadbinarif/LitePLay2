@@ -14,7 +14,6 @@ import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.hamrah.liteplay.AudioFile
 import com.hamrah.liteplay.CustomCommands
 
 private const val MEDIA_SESSION_TAG = "com.hamrah.liteplay.MEDIA_SESSION"
@@ -23,8 +22,6 @@ class MusicService : MediaSessionService() {
 
     private lateinit var mediaSession: MediaSession
     private lateinit var player: ExoPlayer
-
-    private var currentIndex: Int = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -51,22 +48,19 @@ class MusicService : MediaSessionService() {
 
     fun playAudio(index: Int) {
         AudioManager.getAudio(index)?.let { audio ->
-            currentIndex = index
-            player.setMediaItem(MediaItem.fromUri(audio.path))
+            val mediaItems = AudioManager.getAudioList().map { MediaItem.fromUri(it.path) }
+            player.setMediaItems(mediaItems)
             player.prepare()
+            player.seekTo(index,0)
             player.play()
         }
     }
     fun playNext() {
-        val listSize = AudioManager.size()
-        val nextIndex = (currentIndex + 1) % listSize
-        playAudio(nextIndex)
+        player.seekToNext()
     }
 
     fun playPrevious() {
-        val listSize = AudioManager.size()
-        val prevIndex = if (currentIndex == 0) listSize - 1 else currentIndex - 1
-        playAudio(prevIndex)
+        player.seekToPrevious()
     }
 
     fun toggleShuffle() {
@@ -102,12 +96,12 @@ override fun onConnect(
         .add(CustomCommands.playAtIndex)
         .build()
 
-    val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+        val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
 
-            return MediaSession.ConnectionResult.accept(
-                sessionCommands,
-                playerCommands
-            )
+        return MediaSession.ConnectionResult.accept(
+            sessionCommands,
+            playerCommands
+        )
         }
 
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {

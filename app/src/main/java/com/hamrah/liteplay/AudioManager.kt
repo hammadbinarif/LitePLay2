@@ -13,7 +13,7 @@ object AudioManager {
         shuffledList = files
     }
 
-    fun getCurrentList(): List<AudioFile> {
+    fun getAudioList(): List<AudioFile> {
         return if (isShuffleEnabled) shuffledList else audioFiles
     }
 
@@ -31,7 +31,7 @@ object AudioManager {
     }
 
     fun getAudio(index: Int): AudioFile? {
-        val list = getCurrentList()
+        val list = getAudioList()
         return if (index in list.indices) list[index] else null
     }
 
@@ -39,5 +39,5 @@ object AudioManager {
         return audioFiles.groupBy { it.parentFolder }
     }
 
-    fun size(): Int = getCurrentList().size
+    fun size(): Int = getAudioList().size
 }
