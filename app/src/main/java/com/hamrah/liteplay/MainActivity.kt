@@ -1,12 +1,12 @@
     // MainActivity.kt
 package com.hamrah.liteplay
 
+import AudioManager
 import FolderBrowserScreen
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -21,9 +21,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
@@ -83,8 +82,8 @@ class MainActivity : ComponentActivity() {
 
 
         audioFiles = loadAudioFiles()
-        audioByFolder = groupAudioByFolder(audioFiles)
-        shuffledList = audioFiles // initialize to original
+        AudioManager.setAudioFiles(audioFiles)
+        audioByFolder = AudioManager.groupByFolder()
 
 
         setContent {
@@ -98,19 +97,18 @@ class MainActivity : ComponentActivity() {
                             visibleAudioList.addAll(
                                 audioByFolder[selectedFolder.value] ?: emptyList()
                             )
-
                         },
                         playbackPosition = playbackPosition,
                         duration = duration,
                         onSeek = { pos -> mediaController?.seekTo(pos) },
                         onForward = { mediaController?.seekTo(playbackPosition.value + 10000) },
-                        onPrevious = { playPreviousAudio() },
-                        onRepeat = { toggleRepeat() },
+                        onPrevious = { mediaController?.sendCustomCommand(CustomCommands.playPrevious,Bundle.EMPTY) },
+                        onRepeat = { mediaController?.sendCustomCommand(CustomCommands.toggleRepeat,Bundle.EMPTY) },
                         onRewind = { mediaController?.seekTo(playbackPosition.value - 10000) },
                         isRepeatEnabled = isRepeatEnabled.value,
-                        onToggleShuffle = { toggleShuffle() },
-                        onNext = { playNextAudio() },
-                        onTogglePlayPause = {togglePlayPause()},
+                        onToggleShuffle = { mediaController?.sendCustomCommand(CustomCommands.toggleShuffle,Bundle.EMPTY) },
+                        onNext = { mediaController?.sendCustomCommand(CustomCommands.playNext,Bundle.EMPTY) },
+                        onTogglePlayPause = {mediaController?.sendCustomCommand(CustomCommands.togglePlayPause,Bundle.EMPTY)},
                         isPlaying = isPlaying.value
 
 
@@ -126,20 +124,23 @@ class MainActivity : ComponentActivity() {
 
                         AudioListScreen(
                             audioFiles = audioByFolder[selectedFolder.value] ?: emptyList(),
-                            onAudioSelected = { audio, index -> playAudio(index) },
+                            onAudioSelected = { audio, index ->
+                                AudioManager.setAudioFiles(audioByFolder[selectedFolder.value] ?: emptyList())
+                                playAudioAtIndex(index)
+                            },
                             currentAudio = currentAudio.value,
-                            onNext = { playNextAudio() },
-                            onToggleShuffle = { toggleShuffle() },
+                            onNext = { mediaController?.sendCustomCommand(CustomCommands.playNext,Bundle.EMPTY) },
+                            onToggleShuffle = { mediaController?.sendCustomCommand(CustomCommands.toggleShuffle,Bundle.EMPTY) },
                             isShuffleEnabled = isShuffleEnabled.value,
                             playbackPosition = playbackPosition,
                             duration = duration,
                             onSeek = { pos -> mediaController?.seekTo(pos) },
                             onForward = { mediaController?.seekTo(playbackPosition.value + 10000) },
-                            onPrevious = { playPreviousAudio() },
-                            onRepeat = { toggleRepeat() },
+                            onPrevious = { mediaController?.sendCustomCommand(CustomCommands.playPrevious,Bundle.EMPTY) },
+                            onRepeat = { mediaController?.sendCustomCommand(CustomCommands.toggleRepeat,Bundle.EMPTY) },
                             onRewind = { mediaController?.seekTo(playbackPosition.value - 10000) },
                             isRepeatEnabled = isRepeatEnabled.value,
-                            onTogglePlayPause = {togglePlayPause()},
+                            onTogglePlayPause = {mediaController?.sendCustomCommand(CustomCommands.togglePlayPause,Bundle.EMPTY)},
                             isPlaying = isPlaying.value
 
                         )
@@ -190,64 +191,15 @@ class MainActivity : ComponentActivity() {
         // TODO: Add code to handle android version
     }
 
-    fun playAudio(index: Int) {
-        mediaController?.stop()
-        mediaController?.clearMediaItems()
-        isPlaying.value=false
-
-        val selectedList = if (isShuffleEnabled.value) shuffledList else visibleAudioList
-
-        if (index < selectedList.size) {
-            val audio = selectedList[index]
-            mediaController?.setMediaItem(MediaItem.fromUri(Uri.parse(audio.path)))
-            mediaController?.prepare()
-            mediaController?.play()
-            currentAudioIndex.value = index
-            currentAudio.value = audio
-            isPlaying.value=true
+    fun playAudioAtIndex(index: Int) {
+        val args = Bundle().apply {
+            putInt("index", index)
         }
-    }
 
-    fun playNextAudio() {
-        val list = if (isShuffleEnabled.value) shuffledList else visibleAudioList
-        val nextIndex = (currentAudioIndex.value + 1) % list.size
-        playAudio(nextIndex)
-    }
-
-    fun playPreviousAudio() {
-        val list = if (isShuffleEnabled.value) shuffledList else visibleAudioList
-        val previousIndex = if (currentAudioIndex.value ==0) list.size-1 else currentAudioIndex.value-1
-        playAudio(previousIndex)
-    }
-
-    fun toggleShuffle() {
-        isShuffleEnabled.value = !isShuffleEnabled.value
-        if (isShuffleEnabled.value) {
-            shuffledList = visibleAudioList.shuffled()
-        }
-    }
-
-    fun groupAudioByFolder(audioList: List<AudioFile>): Map<String, List<AudioFile>> {
-        return audioList.groupBy { it.parentFolder }
-    }
-
-
-    private fun toggleRepeat() {
-        isRepeatEnabled.value = !isRepeatEnabled.value
-        mediaController?.repeatMode = if (isRepeatEnabled.value) {
-            Player.REPEAT_MODE_ONE // Repeats current song
-        } else {
-            Player.REPEAT_MODE_OFF
-        }
-    }
-
-    fun togglePlayPause() {
-        if (mediaController?.isPlaying==true) {
-            mediaController!!.pause()
-        } else {
-            mediaController!!.play()
-        }
-        isPlaying.value = mediaController?.isPlaying ==true
+        mediaController?.sendCustomCommand(
+            SessionCommand(CustomCommands.CMD_PLAY_AT_INDEX, Bundle.EMPTY),
+            args
+        )
     }
 
 }
